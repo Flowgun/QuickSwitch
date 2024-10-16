@@ -10,10 +10,10 @@ By		: NotNull
 Info	: https://www.voidtools.com/forum/viewtopic.php?f=2&t=9881
 */
 
-;_____________________________________________________________________________
+;____________________________________________
 ;
 ;					SETTINGS
-;_____________________________________________________________________________
+;____________________________________________
 ;
 
 	#NoEnv  						; Recommended for performance and compatibility with future AutoHotkey releases.
@@ -22,19 +22,14 @@ Info	: https://www.voidtools.com/forum/viewtopic.php?f=2&t=9881
 	SetWorkingDir %A_ScriptDir%		; Ensures a consistent starting directory.
 	#singleinstance force
 
-
 ;	Total Commander internal codes
 	global cm_CopySrcPathToClip  := 2029
 	global cm_CopyTrgPathToClip  := 2030
 
 	global $DEBUG := 0
 
-
 	FunctionShowMenu := Func("ShowMenu")
 	Hotkey, ^Q, %FunctionShowMenu%, Off
-
-
-
 
 ;	INI file ( <program name without extension>.INI)
 	SplitPath, A_ScriptFullPath,,,, name_no_ext
@@ -47,12 +42,10 @@ Info	: https://www.voidtools.com/forum/viewtopic.php?f=2&t=9881
 	_tempfile := _tempfolder . "\dopusinfo.xml"
 	FileDelete, %_tempfile%
 
-
-
-;_____________________________________________________________________________
+;____________________________________________
 ;
 ;					ACTION!
-;_____________________________________________________________________________
+;____________________________________________
 ;
 
 ;	Check if Win7 or higher; if not: exit
@@ -66,90 +59,59 @@ Info	: https://www.voidtools.com/forum/viewtopic.php?f=2&t=9881
 		ExitApp
 	}
 
-
-
 loop
 {
-	
 	WinWaitActive, ahk_class #32770
 
-;_____________________________________________________________________________
+;__________________________________________
 ;
-;					DIALOG ACTIVE
-;_____________________________________________________________________________
+;			DIALOG ACTIVE
+;__________________________________________
 ;
-
 	
 ;	Get ID of dialog box
 	$WinID := WinExist("A")
+	
+;	If dialog not supported
+If (!$DialogType := FileDialogChecker($WinID))
+	return
 
-	$DialogType := SmellsLikeAFileDialog($WinID)
+;	Get Windows title and process.exe of this dialog
+	WinGet, $ahk_exe, ProcessName, ahk_id %$WinID%
+	WinGetTitle, $window_title , ahk_id %$WinID%
 
-	If $DialogType											;	This is a supported dialog
-	{
+	$FingerPrint := $ahk_exe . "___" . $window_title
+
+;	Check if FingerPrint entry is already in INI, so we know what to do.
+	IniRead, $DialogAction, %$INI%, Dialogs, %$FingerPrint%
+
+
+	If ($DialogAction = 1){  							;	======= AutoSwitch ==	
+		$FolderPath := Get_Zfolder($WinID)
+		If ( ValidFolder( $FolderPath )) 
+			FeedDialog%$DialogType%($WinID, $FolderPath)
+	}else If ($DialogAction  = 0 )							;	======= Never AutoSwitch here ==
+		return
+	Else	; if no value is assigned					;	======= Show Menu ==
+		ShowMenu()
+
+;	If we end up here, we checked the INI for what to do in this supported dialog and did it
+;	We are still in this dialog and can now enable the hotkey for manual menu-activation
+;	Activate the CTR-Q hotkey. When pressed, start the  ShowMenu routine
+
+	Hotkey, ^Q, On
+
+sleep, 100
+
+WinWaitNotActive
 		
-	;	Get Windows title and process.exe of this dialog
-		WinGet, $ahk_exe, ProcessName, ahk_id %$WinID%
-		WinGetTitle, $window_title , ahk_id %$WinID%
-
-		$FingerPrint := $ahk_exe . "___" . $window_title
-
-
-	;	Check if FingerPrint entry is already in INI, so we know what to do.
-		IniRead, $DialogAction, %$INI%, Dialogs, %$FingerPrint%
-
-
-		If ($DialogAction = 1 )   								;	======= AutoSwitch ==
-		{	
-			$FolderPath := Get_Zfolder($WinID)
-
-			If ( ValidFolder( $FolderPath )) 
-			{ 
-			;	FeedDialog($WinID, $FolderPath)
-				FeedDialog%$DialogType%($WinID, $FolderPath)
-			}
-		}
-		Else If ($DialogAction = 0 )							;	======= Never here ==
-		{
-		;	Do nothing
-		}
-		Else															;	======= Show Menu ==
-		{
-			ShowMenu()
-		}
-
-
-
-	;	If we end up here, we checked the INI for what to do in this supported dialog and did it
-	;	We are still in this dialog and can now enable the hotkey for manual menu-activation
-	;	Activate the CTR-Q hotkey. When pressed, start the  ShowMenu routine
-
-
-		Hotkey, ^Q, On
-	}																	;	End of File Dialog routine
-	Else																;	This is a NOT supported dialog
-	{
-	;	Do nothing; Not a supported dialogtype
-	}
-
-	sleep, 100
-
-
-
-
-
-
-	WinWaitNotActive
-		
-;_____________________________________________________________________________
+;________________________________________________
 ;
 ;					DIALOG NOT ACTIVE
-;_____________________________________________________________________________
+;________________________________________________
 ;
+	Hotkey, ^Q, Off
 
-		Hotkey, ^Q, Off
-
-	
 ;	Clean up
 	$WinID := ""
 	$ahk_exe := ""
@@ -160,23 +122,14 @@ loop
 	$FolderPath := ""
 	$DialogType := ""
 
-
-
 ;_____________________________________________________________________________
 ;
 }	; End of continuous	WinWaitActive /	WinWaitNotActive loop
 ;_____________________________________________________________________________
 
 
-
-
 MsgBox We never get here (and that's how it should be)
 ExitApp
-
-
-
-
-
 
 ;=============================================================================
 ;=============================================================================
@@ -188,78 +141,55 @@ ExitApp
 ;=============================================================================
 ;=============================================================================
 
-
-
-;_____________________________________________________________________________
 ;
-				SmellsLikeAFileDialog(_thisID )
-;_____________________________________________________________________________
+;______________________________________________________
+;
+			FileDialogChecker(DiagID:="")
+;______________________________________________________
 ;
 {
+;; Edit1 and ToolbarWindow321 are required
+;; DirectUIHWND1 for new Dialog boxes
+;; SysListView321 for old dialog boxes
 
 ;	Only consider this dialog a possible file-dialog when:
 ;	(SysListView321 AND ToolbarWindow321) OR (DirectUIHWND1 AND ToolbarWindow321) controls detected
 ;	First is for Notepad++; second for all other filedialogs
 ;	That is our rough detection of a File dialog. Returns 1 or 0 (TRUE/FALSE)
+	if (!DiagID)
+		DiagID:= WinExist("ahk_class #32770")
 
-	WinGet, _controlList, ControlList, ahk_id %_thisID%
-
-	Loop, Parse, _controlList, `n
-	{
-		If ( A_LoopField = "SysListView321"  )
-			_SysListView321 := 1
-
-		If ( A_LoopField = "ToolbarWindow321")
-			_ToolbarWindow321 := 1
-
-		If ( A_LoopField = "DirectUIHWND1"   ) 
-			_DirectUIHWND1 := 1
-
-		If ( A_LoopField = "Edit1"   ) 
-			_Edit1 := 1
-	}
-
-
-	If ( _DirectUIHWND1 and _ToolbarWindow321 and _Edit1 ) 
-	{
-		Return "GENERAL"
-
-	}
-	Else If ( _SysListView321 and _ToolbarWindow321 and _Edit1 ) 
-	{
-		Return "SYSLISTVIEW"
-	}
-	else
-	{
-		Return FALSE
-	}
-
+	ControlGet, OutputVar, Visible,, Edit1, ahk_id %DiagID%
+	if (!Output)
+		return 0
+	ControlGet, OutputVar, Visible,, ToolbarWindow321, ahk_id %DiagID%
+	if (!Output)
+		return 0
+	ControlGet, OutputVar, Visible,, DirectUIHWND1, ahk_id %DiagID%
+	if (Output)
+		return DiagID
+	ControlGet, OutputVar, Visible,, SysListView321, ahk_id %DiagID%
+	if (Output)
+		return DiagID
+return 0
 }
 
-
-;_____________________________________________________________________________
+;_______________________________________________________
 ;
-				FeedDialogGENERAL( _thisID, _thisFOLDER )
-;_____________________________________________________________________________
+		FeedDialogGENERAL( _thisID, _thisFOLDER )
+;_______________________________________________________
 ;    
 {
 	Global $DialogType
-
 	WinActivate, ahk_id %_thisID%
-
 	sleep 50
 
-;	Focus Edit1
 	ControlFocus Edit1, ahk_id %_thisID%
-
 	WinGet, ActivecontrolList, ControlList, ahk_id %_thisID%
-
 
 	Loop, Parse, ActivecontrolList, `n	; which addressbar and "Enter" controls to use 
 	{
-		If InStr(A_LoopField, "ToolbarWindow32")
-		{
-		;	ControlGetText _thisToolbarText , %A_LoopField%, ahk_id %_thisID%
+		If InStr(A_LoopField, "ToolbarWindow32"){
 			ControlGet, _ctrlHandle, Hwnd,, %A_LoopField%, ahk_id %_thisID%
 
 		;	Get handle of parent control
@@ -269,25 +199,19 @@ ExitApp
 			WinGetClass, _parentClass, ahk_id %_parentHandle%
 
 			If InStr( _parentClass, "Breadcrumb Parent" )
-			{
 				_UseToolbar := A_LoopField
-			}
 
 			If Instr( _parentClass, "msctls_progress32" )
-			{
 				_EnterToolbar := A_LoopField
-			}	
 		}
-
+		
 	;	Start next round clean
 		_ctrlHandle			:= ""
 		_parentHandle		:= ""
 		_parentClass		:= ""
-	
 	}
 
-	If ( _UseToolbar AND _EnterToolbar )
-	{
+	If ( _UseToolbar AND _EnterToolbar ){
 		Loop, 5
 		{
 			SendInput ^l
@@ -296,14 +220,11 @@ ExitApp
 		;	Check and insert folder
 			ControlGetFocus, _ctrlFocus,A
 
-			If ( InStr( _ctrlFocus, "Edit" ) AND ( _ctrlFocus != "Edit1" ) )
-			{
+			If ( InStr( _ctrlFocus, "Edit" ) AND ( _ctrlFocus != "Edit1" ) ){
 				Control, EditPaste, %_thisFOLDER%, %_ctrlFocus%, A
 				ControlGetText, _editAddress, %_ctrlFocus%, ahk_id %_thisID%
 				If (_editAddress = _thisFOLDER )
-				{
 					_FolderSet := TRUE
-				}
 			}
 		;	else: 	Try it in the next round
 
@@ -313,27 +234,18 @@ ExitApp
 
 		}	Until _FolderSet
 
-
-		
-		If (_FolderSet)
-		{
+		If (_FolderSet){
 		;	Click control to "execute" new folder	
 			ControlClick, %_EnterToolbar%, ahk_id %_thisID%
 
 		;	Focus file name
 			Sleep, 15
 			ControlFocus Edit1, ahk_id %_thisID%
-		}
-		Else
-		{
+		}Else{
 		;	What to do if folder is not set?
 		}
-	}
-	Else ; unsupported dialog. At least one of the needed controls is missing
-	{
+	}Else ; unsupported dialog. At least one of the needed controls is missing
 		MsgBox This type of dialog can not be handled (yet).`nPlease report it!
-	}
-
 
 ;	Clean up; probably not needed
 
@@ -342,18 +254,13 @@ ExitApp
 	_editAddress := ""
 	_FolderSet := ""
 	_ctrlFocus := ""
-
-
 Return
 }
 
-
-
-
-;_____________________________________________________________________________
+;_______________________________________________________
 ;
-				FeedDialogSYSLISTVIEW( _thisID, _thisFOLDER )
-;_____________________________________________________________________________
+		FeedDialogSYSLISTVIEW( _thisID, _thisFOLDER )
+;_______________________________________________________
 ;    
 {
 	Global $DialogType
@@ -361,12 +268,10 @@ Return
 	WinActivate, ahk_id %_thisID%
 ;	Sleep, 50
 
-
 ;	Read the current text in the "File Name:" box (= $OldText)
 
 	ControlGetText _oldText, Edit1, ahk_id %_thisID%
 	Sleep, 20
-
 
 ;	Make sure there exactly 1 \ at the end.
 
@@ -389,8 +294,6 @@ Return
 		ControlFocus Edit1, ahk_id %_thisID%
 		ControlSend Edit1, {Enter}, ahk_id %_thisID%
 
-
-
 	;	Restore  original filename / make empty in case of previous folder
 
 		Sleep, 15
@@ -410,10 +313,6 @@ Return
 Return
 }
 
-
-
-
-
 ;_____________________________________________________________________________
 ;
 				ShowMenu()
@@ -432,8 +331,6 @@ Return
 	Menu ContextMenu, Default,  QuickSwitch Menu
 	Menu ContextMenu, disable, QuickSwitch Menu
 
-
-
 	WinGet, _allWindows, list
 	Loop, %_allWindows%
 	{
@@ -442,8 +339,7 @@ Return
 
 	;---------------[ Total Commander Folders]--------------------------------------
 
-		If ( _thisClass = "TTOTAL_CMD")
-		{
+		If ( _thisClass = "TTOTAL_CMD"){
 		;	Get Process information for TC icon
 			WinGet, _thisPID, PID, ahk_id %_thisID%
 			_TC_exe := GetModuleFileNameEx( _thisPID )
@@ -454,33 +350,27 @@ Return
 			SendMessage 1075, %cm_CopySrcPathToClip%, 0, , ahk_id %_thisID%
 
 		;	Check if valid folder first. Only add it if it is.
-			If (ErrorLevel = 0) AND ( ValidFolder( clipboard ) )
-			{	
+			If (!ErrorLevel AND  ValidFolder( clipboard ) ){	
 				Menu ContextMenu, Add,  %clipboard%, FolderChoice
 				Menu ContextMenu, Icon, %clipboard%, %_TC_exe%,0, 32
 				_showMenu := 1
-	
 			}
 
 			SendMessage 1075, %cm_CopyTrgPathToClip%, 0, , ahk_id %_thisID%
 
-			If (ErrorLevel = 0) AND ( ValidFolder( clipboard ) )
-			{
+			If (!ErrorLevel AND  ValidFolder( clipboard ) ){
 				Menu ContextMenu, Add,  %clipboard%, FolderChoice
 				Menu ContextMenu, Icon, %clipboard%, %_TC_exe%,0,32
 				_showMenu := 1
 			}
 
-
 			Clipboard := ClipSaved
 			ClipSaved := ""
 		}
 
-
 	;---------------[ XYPlorer               ]--------------------------------------
 
-		If ( _thisClass = "ThunderRT6FormDC")
-		{
+		If ( _thisClass = "ThunderRT6FormDC"){
 		;	Get Process information for TC icon
 			WinGet, _thisPID, PID, ahk_id %_thisID%
 			_XYPlorer_exe := GetModuleFileNameEx( _thisPID )
@@ -491,8 +381,7 @@ Return
 			Send_XYPlorer_Message(_thisID, "::copytext get('path', a);")
 
 		;	Check if valid folder first. Only add it if it is.
-			If (ErrorLevel = 0) AND ( ValidFolder( clipboard ))
-			{
+			If (!ErrorLevel AND ValidFolder( clipboard )){
 				Menu ContextMenu, Add,  %clipboard%, FolderChoice
 				Menu ContextMenu, Icon, %clipboard%, %_XYPlorer_exe%,0, 32
 				_showMenu := 1
@@ -500,8 +389,7 @@ Return
 
 			Send_XYPlorer_Message(_thisID, "::copytext get('path', i);")
 
-			If (ErrorLevel = 0) AND ( ValidFolder( clipboard ))
-			{
+			If (!ErrorLevel AND  ValidFolder( clipboard )){
 				Menu ContextMenu, Add,  %clipboard%, FolderChoice
 				Menu ContextMenu, Icon, %clipboard%, %_XYPlorer_exe%,0,32
 				_showMenu := 1
@@ -514,15 +402,13 @@ Return
 
 	;---------------[ Directory Opus         ]--------------------------------------
 
-		If ( _thisClass = "dopus.lister")
-		{
+		If ( _thisClass = "dopus.lister"){
 		;	Get Process information for Opus icon
 			WinGet, _thisPID, PID, ahk_id %_thisID%
 			_dopus_exe := GetModuleFileNameEx( _thisPID )
 
 
-			If !(OpusInfo)
-			{
+			If !(OpusInfo){
 			;	Comma needs escaping: `,
 				Run, "%_dopus_exe%\..\dopusrt.exe" /info "%_tempfile%"`,paths,,, $DUMMY
 						
@@ -531,64 +417,51 @@ Return
 				
 				Sleep, 20
 				FileDelete, %_tempfile%
-
-
 			}
-
 
 			;	Get active path of this lister (regex instead of XML library)
 				RegExMatch(OpusInfo, "mO)^.*lister=\""" . _thisID . "\"".*tab_state=\""1\"".*\>(.*)\<\/path\>$", out)
 				_thisFolder := out.Value(1)
 				
 			;	Check if valid folder first. Only add it if it is.
-				If ValidFolder( _thisFolder )
-				{
+				If (ValidFolder( _thisFolder )){
 					Menu ContextMenu, Add,  %_thisFolder%, FolderChoice
 					Menu ContextMenu, Icon, %_thisFolder%, %_dopus_exe%,0, 32
 					_showMenu := 1
 				}
 				_thisFolder := ""
-
 
 			;	Get passive path of this lister
 				RegExMatch(OpusInfo, "mO)^.*lister=\""" . _thisID . "\"".*tab_state=\""2\"".*\>(.*)\<\/path\>$", out)
 				_thisFolder := out.Value(1)
 				
 			;	Check if valid folder first. Only add it if it is.
-				If ValidFolder( _thisFolder )
-				{
+				If (ValidFolder( _thisFolder ))	{
 					Menu ContextMenu, Add,  %_thisFolder%, FolderChoice
 					Menu ContextMenu, Icon, %_thisFolder%, %_dopus_exe%,0, 32
 					_showMenu := 1
 				}
 				_thisFolder := ""
-
 		}
 
 	;---------------[ File Explorer Folders ]----------------------------------------
 
-
-		If ( _thisClass = "CabinetWClass")
-		{
+		If ( _thisClass = "CabinetWClass"){
 			For _Exp in ComObjCreate("Shell.Application").Windows
 			{
 				try  ; Attempts to execute code.
-				{
 					_checkID := _Exp.hwnd
-				}
 				catch e  ; Handles the errors that Opus will generate.
 				{
 					; Do nothing. Just ignore error.
 					; Proceed to the next Explorer instance
 				}
 
-				If ( _thisID = _checkID )
-				{
+				If ( _thisID = _checkID ){
 					_thisExplorerPath := _Exp.Document.Folder.Self.Path
 
 				;	Check if valid folder first. Don't add it if not.
-					If ( ValidFolder(_thisExplorerPath))
-					{
+					If ( ValidFolder(_thisExplorerPath)){
 						Menu ContextMenu, Add,  %_thisExplorerPath%, FolderChoice
 						Menu ContextMenu, Icon, %_thisExplorerPath%, shell32.dll, 5,32
 						_showMenu := 1
@@ -603,10 +476,7 @@ Return
 ;	Most recent used filemanager will be shown on top. 
 ;	If no folders found to be shown: no need to show menu ...
 
-	
-	If ( _showMenu = 1 )
-	{
-
+	If ( _showMenu = 1 ){
 
 	;---------------[ Settings ]----------------------------------------
 
@@ -618,27 +488,18 @@ Return
 		Menu ContextMenu, Add,  Never here, Never, Radio
 		Menu ContextMenu, Add,  Not now, ThisMenu, Radio
 
-
 	;	Activate radiobutton for current setting (depends on INI setting)
 	;	Only show AutoSwitchException if AutoSwitch is activated.
 
-		If ($DialogAction = 1)
-		{
+		If ($DialogAction = 1){
 			Menu ContextMenu, Check, Allow AutoSwitch
 			Menu ContextMenu, Add,  AutoSwitch exception, AutoSwitchException
-		}
-		Else If ($DialogAction = 0)
-		{
+		}Else If ($DialogAction = 0)
 			Menu ContextMenu, Check, Never here
-		}
 		Else
-		{
 			Menu ContextMenu, Check, Not now
-		}
-
 
 		Menu ContextMenu, Add,  Debug this dialog, Debug_Controls		
-
 
 	;---------------[ Show ]----------------------------------------
 
@@ -651,85 +512,54 @@ Return
 
 		Menu ContextMenu, Show, 100,100
 		Menu ContextMenu, Delete
-
 	}
 	else
-	{
 		Menu ContextMenu, Delete
-	}
-	
-;	Delete _tempfile	
-
 
 Return
 }
 
-
-
-;_____________________________________________________________________________
+;______________________________________________________
 ;
 				FolderChoice:
-;_____________________________________________________________________________
-;
+;______________________________________________________
 {
 	Global $DialogType
 	If ValidFolder( A_ThisMenuItem )
-	{ 
-	;	FeedDialog($WinID, $FolderPath)
 		FeedDialog%$DialogType%($WinID, A_ThisMenuItem)
-	}
-		
 Return
 }
 
-;_____________________________________________________________________________
+;_______________________________________________________
 ;
 				AutoSwitch:
-;_____________________________________________________________________________
+;_______________________________________________________
 ;
 	Global $DialogType
-
 	IniWrite, 1, %$INI%, Dialogs, %$FingerPrint%
-
 	$DialogAction := 1
-
 	$FolderPath := Get_Zfolder($WinID)
-
 	If ( ValidFolder( $FolderPath ))
-	{ 
-	;	FeedDialog($WinID, $FolderPath)
 		FeedDialog%$DialogType%($WinID, $FolderPath)
-	}
-	
 	$FolderPath := ""
-	
-
 Return
-
-
 
 ;_____________________________________________________________________________
 ;
 				Never:
 ;_____________________________________________________________________________
 ;
-
 	IniWrite, 0, %$INI%, Dialogs, %$FingerPrint%
-
 	$DialogAction := 0
 
 Return
-
-
 
 ;_____________________________________________________________________________
 ;
 				ThisMenu:
 ;_____________________________________________________________________________
 ;
-
 	IniDelete, %$INI%, Dialogs, %$FingerPrint%
-
 	$DialogAction := ""
 
 Return
@@ -740,7 +570,6 @@ Return
 ;_____________________________________________________________________________
 ;
 	Global $DialogType
-
 
 	MsgBox, 1, AutoSwitch Exceptions,
 	(
@@ -753,7 +582,6 @@ Return
   created extra (possibly even hidden) windows
   Example: File manager==> Task Manager ==> Run new task ==> Browse
   ==> Dialog .
-
 
   To support these dialogs too:
   - Click Cancel in this Dialog
@@ -771,7 +599,6 @@ Return
     (most common exception is 3; default is 2)
 	
 	)
-	
 	IfMsgBox OK
 	{
 	
@@ -788,16 +615,14 @@ Return
 			WinGet, this_exe, ProcessName, ahk_id %this_id%
 			WinGetTitle, this_title , ahk_id %this_id%
 			
-			If ( this_id = $WinID )
-			{
+			If ( this_id = $WinID ){
 				$select := "select"
 				level_1 := A_Index
 				Z_exe		:= this_exe
 				Z_title	:= this_title
 			}
-
-			If (NOT level_2) AND ( ( this_class = "TTOTAL_CMD" ) OR ( this_class = "CabinetWClass" ) OR ( this_class = "ThunderRT6FormDC" ))
-			{
+			
+			If (NOT level_2) AND ( ( this_class = "TTOTAL_CMD" ) OR ( this_class = "CabinetWClass" ) OR ( this_class = "ThunderRT6FormDC" )){
 				$select	:= "select"
 				level_2	:= A_Index
 			}
@@ -805,7 +630,6 @@ Return
 			LV_Add( $select, A_Index, This_id, this_title, this_exe, this_class )
 			$select := ""
 		}
-
 
 		Delta := level_2 - level_1
 		LV_ModifyCol()  ; Auto-size each column to fit its contents.
@@ -818,26 +642,21 @@ Return
 
 		IfMsgBox OK
 		{
-			If ( Delta =  2 )
-			{
+			If ( Delta =  2 ){
 				IniDelete, 	%$INI%, AutoSwitchException, %$FingerPrint%
 
 			} Else
-			{
 				IniWrite, %Delta%, %$INI%, AutoSwitchException, %$FingerPrint%
-			}
 
 		;	After INI was updated: try to AutoSwich straight away ..
 				
 			$FolderPath := Get_Zfolder($WinID)
 
-			If ( ValidFolder( $FolderPath ))
-			{ 
+			If ( ValidFolder( $FolderPath )){
 			;	FeedDialog($WinID, $FolderPath)
 				FeedDialog%$DialogType%($WinID, $FolderPath)
 			}
 		}
-
 		
 		GUI, Destroy
 		id := ""
@@ -857,43 +676,34 @@ Return
 
 Return
 
-
-
-;_____________________________________________________________________________
+;_______________________________________________________
 ;
 				Dummy:
-;_____________________________________________________________________________
+;_______________________________________________________
 ;
 
 Return
 
-
-
-;_____________________________________________________________________________
+;____________________________________________
 ;
 				ValidFolder(_thisPath_)
-;_____________________________________________________________________________
+;____________________________________________
 ;
 {
 ;	Prepared for extra checks
-;	If ( _thisPath_ != "") {
-	If ( _thisPath_ != ""  AND (StrLen(_thisPath_) < 259 ))
-	{
+	If ( _thisPath_ != ""  AND (StrLen(_thisPath_) < 259 ))	{
 		If InStr(FileExist(_thisPath_), "D")
 			Return TRUE
 		Else
 			Return FALSE
-	}
-	Else
-	{
+	}Else
 		Return FALSE
-	}
 }
 
-;_____________________________________________________________________________
+;_________________________________________________
 ;
 				Get_Zfolder( _thisID_ )
-;_____________________________________________________________________________
+;_________________________________________________
 ;
 {
 ;	Get z-order of all applicatiions.
@@ -902,7 +712,6 @@ Return
 ;	if the next-next one is a file mananger (Explorer class = CabinetWClass ; TC = TTOTAL_CMD),
 ;	read the active folder and browse to it in the dialog.
 ;	Exceptions are in INI section [AutoSwitchException]
-
 
 	Global $FingerPrint
 	Global $INI
@@ -913,14 +722,12 @@ Return
 ;	If not found, use default ( = 2)
 
 	IniRead, _zDelta, %$INI%, AutoSwitchException, %$FingerPrint%, 2
-
 	WinGet, id, list
 
 	Loop, %id%
 	{
 		this_id := id%A_Index%
-		If ( _thisID_ = this_id )
-		{
+		If ( _thisID_ = this_id ){
 			this_z := A_Index
 			Break
 		}
@@ -930,22 +737,17 @@ Return
 	next_id := id%$next%
 	WinGetClass, next_class, ahk_id %next_id%
 
-
-	If ( next_class = "TTOTAL_CMD" ) 							;	Total Commander
-	{
+	If ( next_class = "TTOTAL_CMD" ) {							;	Total Commander
+	
 		ClipSaved := ClipboardAll
 		Clipboard := ""
-
 		SendMessage 1075, %cm_CopySrcPathToClip%, 0, , ahk_id  %next_id%
 
-		If (ErrorLevel = 0)
-		{
-
+		If (!ErrorLevel){
 			$ZFolder := clipboard
 			Clipboard	:= ClipSaved
 		}
 	}
-
 
 	If ( next_class = "ThunderRT6FormDC" ) 						;	XYPlorer
 	{
@@ -984,8 +786,8 @@ Return
 	}
 
 
-	If ( next_class = "dopus.lister" )							;	Directory Opus
-	{
+	If ( next_class = "dopus.lister" ){							;	Directory Opus
+	
 	;	Get dopus.exe loction
 		WinGet, _thisPID, PID, ahk_id %next_id%
 		_dopus_exe := GetModuleFileNameEx( _thisPID )
@@ -993,11 +795,8 @@ Return
 
 	;	Get lister info
 		Run, "%_dopus_exe%\..\dopusrt.exe" /info "%_tempfile%"`,paths,,, $DUMMY
-		
 		Sleep, 100
-		
 		FileRead, OpusInfo, %_tempfile%
-		
 		Sleep, 20
 		FileDelete, %_tempfile%
 
@@ -1005,25 +804,19 @@ Return
 		RegExMatch(OpusInfo, "mO)^.*lister=\""" . next_id . "\"".*tab_state=\""1\"".*\>(.*)\<\/path\>$", out)
 		$ZFolder := out.Value(1)
 ;		MsgBox Active Z-folder = [%$ZFolder%]
-
 	}
-
-
 	Return $ZFolder
 }
 
-
-
-;_____________________________________________________________________________
+;______________________________________________
 ;
 				GetModuleFileNameEx( p_pid )
-;_____________________________________________________________________________
+;______________________________________________
 ;
 ;	From: https://autohotkey.com/board/topic/32965-getting-file-path-of-a-running-process/
 ;	NotNull: changed "GetModuleFileNameExA" to "GetModuleFileNameExW""
 
 {
-	
 	h_process := DllCall( "OpenProcess", "uint", 0x10|0x400, "int", false, "uint", p_pid )
 	if ( ErrorLevel or h_process = 0 )
 	  return
@@ -1038,25 +831,19 @@ Return
 	return, name
 }
 
-
-
-
-;_____________________________________________________________________________
+;_____________________________________________________________
 ;
 				Send_XYPlorer_Message(xyHwnd, message)
-;_____________________________________________________________________________
+;_____________________________________________________________
 ;
 
 {
 	size := StrLen(message)
-	If !(A_IsUnicode)
-	{
+	If !(A_IsUnicode){
 		VarSetCapacity(data, size * 2, 0)
 		StrPut(message, &data, "UTF-16")
 	} Else
-	{
 		data := message
-	}
 
 	VarSetCapacity(COPYDATA, A_PtrSize * 3, 0)
 	NumPut(4194305, COPYDATA, 0, "Ptr")
@@ -1066,22 +853,14 @@ Return
 Return
 }
 
-
-
-
-
-;_____________________________________________________________________________
+;___________________________________________________
 ;
 				Debug_Controls:
-;_____________________________________________________________________________
+;___________________________________________________
 ;
-
-
-
 
 ; Add ControlGetPos [, X, Y, Width, Height, Control, WinTitle, WinText, ExcludeTitle, ExcludeText]
 ; change folder to ahk folder. change name to fingerpringt.csv
-
 
 	SetFormat, Integer, D
 ;	Header for list
@@ -1106,7 +885,6 @@ Return
 	;	Add to listview ; abs for hex to dec
 		LV_Add(, A_LoopField, abs(_ctrlHandle), _parentHandle, _ctrlText, _X, _Y, _Width, _Height  )
 
-
 		_ctrlHandle := ""
 		_ctrlText := ""
 		_parentHandle := ""
@@ -1121,7 +899,6 @@ Return
 	LV_ModifyCol(2, "Integer")
 	LV_ModifyCol(3, "Integer")
 
-
 	Gui, Add, Button, y+10 w100 h30 gDebugExport, Export 
 	Gui, Add, Button, x+10 w100 h30 gCancelLV, Cancel 
 
@@ -1129,18 +906,14 @@ Return
 
 return
 
-
-
 ;_____________________________________________________________________________
 ;
 				DebugExport:
 ;_____________________________________________________________________________
 ;
-
 	_fileName :=  A_ScriptDir . "\" . $FingerPrint . ".csv"
 	oFile := FileOpen(_fileName, "w")   ; Creates a new file, overwriting any existing file.
-	If (IsObject(oFile))
-	{
+	If (IsObject(oFile)){
 	;	Header
 		_line := "ControlName;ID;PID;Text;X;Y;Width;Height"
 
@@ -1160,19 +933,13 @@ return
 			_line := _col1 ";" _col2 "," _col3 ";" _col4 ";" _col5 ";" _col6 ";" _col7 ";" _col8 ";"
 			oFile.WriteLine(_line)
 		}
-
 		oFile.Close()
 		oFile:=""
 
 		Msgbox Results exported to:`n`n"%_filename%"
 
-	}
-	Else						; File could not be initialized
-	{
+	}Else						; File could not be initialized
 		Msgbox Can't create %_fileName%
-	}
-
-
 
 ;	Clean up
 	_fileName := ""
@@ -1189,12 +956,9 @@ return
 ;_____________________________________________________________________________
 				CancelLV:
 ;_____________________________________________________________________________
-
 		LV_Delete()
 		GUI, Destroy
-
 Return
-
 
 /*
 ============================================================================
